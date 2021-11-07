@@ -82,6 +82,10 @@ async function handle_scraper(request, sender, sendResponse) {
 
         // Check if our current text is non default, if so, save song details
         if(!default_texts.includes(cur_string)){
+            let tmp = cur_string.split(" - ");
+            let search = lastfm_search_song(tmp[0], tmp[1]);
+            console.log(search);
+
             // TODO: Search for song on Last FM to retrieve correct/modified info
             await chrome.storage.local.set({
                 song_name: cur_string,
@@ -102,6 +106,7 @@ async function handle_scraper(request, sender, sendResponse) {
 }
 
 
+// Last FM calls
 async function lastfm_set_now_playing(artist, track) {
     let settings = await load_settings();
     let data = {
@@ -121,6 +126,21 @@ async function lastfm_set_now_playing(artist, track) {
     else{
         console.log("LastFM: set 'now playing' to '" + artist + " - " + track + "'");
     }
+}
+
+async function lastfm_search_song(artist, track){
+    let settings = await load_settings();
+    let data = {
+        method: "track.search",
+        artist: artist,
+        track: track,
+        limit: 1,
+        api_key: settings.API_KEY,
+        format: 'json'
+    };
+    let result = await get(lastfm_base_url, data);
+    console.log(result);
+    return result;
 }
 
 
