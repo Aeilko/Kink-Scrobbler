@@ -43,6 +43,7 @@ async function key_generation_callback(return_url){
     let response = await get(lastfm_base_url, data);
     console.log(response);
     console.log("session key", response.session.key);
+    // TODO: This should at some point be stored somewhere else. Google explicitly warns not to store sensitive data in the storage.
     await chrome.storage.local.set({"session_key": response.session.key});
     $("div#add_keys").hide();
     $("div#keys_generated").show();

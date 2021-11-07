@@ -1,17 +1,48 @@
+chrome.runtime.onInstalled.addListener(async (details) => {
+    console.log(details.reason);
+    await reset();
+
+    // Check if there is anything left
+    console.log(await chrome.storage.local.get(null));
+});
+
 chrome.tabs.onUpdated.addListener( async (id, update, tab) => {
-    // Check if the tab is an audible kink stream
-    if (tab.url && stream_urls.includes(tab.url) && tab.status == "complete" && tab.audible) {
+    // Check if the tab is a kink stream
+    if (tab.url && stream_urls.includes(tab.url)) {
 
-        // Save the window ID and call the page scraper
-        console.log("Listening to a Kink stream in window", tab.id);
+        // Check if the tab is loaded and playing
+        if(tab.status == "complete" && tab.audible) {
+            // Save the window ID
+            console.log("Listening to a Kink stream in window", tab.id);
+            await chrome.storage.local.set({"windowId": tab.id});
 
-        await chrome.storage.local.set({"windowId": tab.id});
-
-        await start_scraper();
+            // Set the acraper to run on 1 minute intervals, and run it directly
+            chrome.alarms.onAlarm.addListener(start_scraper);
+            chrome.alarms.create("KinkScrobbler", {periodInMinutes: 1});
+            await start_scraper();
+        }
+        else{
+            // The user is not listening (anymore?) to the Kink stream, so cancel any running scrapers.
+            console.log("Stopped listening?");
+        }
     }
 });
 
-async function start_scraper() {
+
+async function reset(){
+    console.log("Resetting alarms and storage");
+    let alarm = chrome.alarms.clear("KinkScrobbler");
+    let alarmListener = chrome.alarms.onAlarm.removeListener(start_scraper);
+    let storage = chrome.storage.local.remove(["windowId", "prev_scraped_string", "song_name", "song_start", "song_scrobbled"]);
+    await Promise.all([alarm, alarmListener, storage]);
+}
+
+
+async function start_scraper(alarm) {
+    if(alarm && alarm.name != "KinkScrobbler") {
+        console.log("Wrong alarm");
+        return;
+    }
     // Get the windowID of the tab which plays the stream
     windowId = (await chrome.storage.local.get("windowId")).windowId;
 
@@ -25,29 +56,51 @@ async function start_scraper() {
 }
 
 async function handle_scraper(request, sender, sendResponse) {
-    // Callback happened, remove myself
+    // Check if this is a message from the scraper
+    if(sender.url != "https://kink.nl/player?stream=stream.kink") {
+        console.log("handle_scraper: wrong sender");
+        console.log(sender);
+        return
+    }
+
+    // Callback happened, remove myself as listener
     chrome.runtime.onMessage.removeListener(handle_scraper);
-    let result = request.result;
-    console.log("Now playing:", result);
 
-    // Ignore the default texts (indicating no song, or an unknown one, is playing)
-    if(! default_texts.includes(result)){
+    // Check the scraped text and compare it to the last scraped text
+    let cur_string = request.result;
+    let prev_string = (await chrome.storage.local.get("prev_scraped_string")).prev_scraped_string;
+    if(prev_string != cur_string){
+        // Scraped text differs from previous text
+        console.log("Scraped new text:", cur_string);
 
-        let prev_song = "x";
+        // Check if previous text was a non default text, if so, scrobble the song and remove details from storage
+        if(!default_texts.includes(prev_string)) {
+            // TODO: Scrobble
 
-        if(result == prev_song.prev_song){
-            // Same song is still playing, update the last updated time
-
+            await chrome.storage.local.remove(["song_name", "song_start", "song_scrobbled"]);
         }
-        else{
-            // A new song is playing!
-            let tmp = result.split(" - ");
 
-            // Update now playing
-            await lastfm_set_now_playing(tmp[0], tmp[1]);
+        // Check if our current text is non default, if so, save song details
+        if(!default_texts.includes(cur_string)){
+            // TODO: Search for song on Last FM to retrieve correct/modified info
+            await chrome.storage.local.set({
+                song_name: cur_string,
+                song_start: new Date(),
+                song_scrobbled: false
+            });
         }
     }
+
+    // If the current text is non default we should set now playing on Last FM
+    if(!default_texts.includes(cur_string)){
+        let tmp = cur_string.split(" - ");
+        await lastfm_set_now_playing(tmp[0], tmp[1]);
+    }
+
+    // Save our current string for the next iteration
+    await chrome.storage.local.set({prev_scraped_string: cur_string});
 }
+
 
 async function lastfm_set_now_playing(artist, track) {
     let settings = await load_settings();
@@ -66,9 +119,11 @@ async function lastfm_set_now_playing(artist, track) {
         console.log("lastfm_set_now_playing error", data);
     }
     else{
-        console.log("LastFM now playing set", artist, track);
+        console.log("LastFM: set 'now playing' to '" + artist + " - " + track + "'");
     }
 }
+
+
 
 /**
  * SUPPORT METHODS
