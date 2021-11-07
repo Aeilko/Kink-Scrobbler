@@ -1,0 +1,20 @@
+{
+  "name": "Kink Scrobbler",
+  "description": "Scrobbles the songs being played while listening to Kink",
+  "version": "0.1",
+  "manifest_version": 3,
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "permissions": ["storage", "tabs", "scripting", "identity"],
+  "host_permissions": ["https://kink.nl/player?stream=stream.kink"],
+  "action": {
+    "default_icon": {
+      "180": "/resources/images/kink-icon.png"
+    }
+  },
+  "icons": {
+    "180": "/resources/images/kink-icon.png"
+  }
+}
