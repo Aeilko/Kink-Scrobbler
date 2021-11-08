@@ -1,11 +1,20 @@
+// Chrome extension listeners
+/**
+ * Reset the extension once updated
+ */
 chrome.runtime.onInstalled.addListener(async (details) => {
     console.log(details.reason);
     await reset();
+
+    await chrome.storage.local.remove("song_name");
 
     // Check if there is anything left
     console.log(await chrome.storage.local.get(null));
 });
 
+/**
+ * Main extension functionality, detecting the kink stream and planning the scraper
+ */
 chrome.tabs.onUpdated.addListener( async (id, update, tab) => {
     // Check if the tab is a kink stream
     if (tab.url && stream_urls.includes(tab.url)) {
@@ -24,20 +33,37 @@ chrome.tabs.onUpdated.addListener( async (id, update, tab) => {
         else{
             // The user is not listening (anymore?) to the Kink stream, so cancel any running scrapers.
             console.log("Stopped listening?");
+            await reset();
+            // TODO: Detect a stopped stream
         }
     }
 });
 
+/**
+ * Makes clicking the extension icon open the Kink stream
+ */
+chrome.action.onClicked.addListener((curTab) => {
+    chrome.tabs.create({"url": stream_urls[0]});
+});
 
+
+// Extension functionality
+/**
+ * Resets the extension by removing listeners and emptying runtime storage
+ */
 async function reset(){
     console.log("Resetting alarms and storage");
     let alarm = chrome.alarms.clear("KinkScrobbler");
     let alarmListener = chrome.alarms.onAlarm.removeListener(start_scraper);
-    let storage = chrome.storage.local.remove(["windowId", "prev_scraped_string", "song_name", "song_start", "song_scrobbled"]);
+    let storage = chrome.storage.local.remove(["windowId", "prev_scraped_string", "song_string", "song_artist", "song_track", "song_start", "song_scrobbled"]);
     await Promise.all([alarm, alarmListener, storage]);
 }
 
-
+/**
+ * Entry point of this extensions main loop
+ * Injects the content_script on the tab which plays the stream to scrape the current song
+ * @param alarm (optional) Set if the method is called by an alarm. The alarm identifier is alarm.name
+ */
 async function start_scraper(alarm) {
     if(alarm && alarm.name != "KinkScrobbler") {
         console.log("Wrong alarm");
@@ -55,6 +81,13 @@ async function start_scraper(alarm) {
     });
 }
 
+/**
+ * Part of this extensions main loop, will be triggered by the message sent from the content_script on the stream page.
+ * Will process the scraped information, and make the corresponding LastFM calls.
+ * @param request Contains the message which triggered the method
+ * @param sender Contains information about the sender
+ * @param sendResponse
+ */
 async function handle_scraper(request, sender, sendResponse) {
     // Check if this is a message from the scraper
     if(sender.url != "https://kink.nl/player?stream=stream.kink") {
@@ -62,7 +95,6 @@ async function handle_scraper(request, sender, sendResponse) {
         console.log(sender);
         return
     }
-
     // Callback happened, remove myself as listener
     chrome.runtime.onMessage.removeListener(handle_scraper);
 
@@ -75,30 +107,45 @@ async function handle_scraper(request, sender, sendResponse) {
 
         // Check if previous text was a non default text, if so, scrobble the song and remove details from storage
         if(!default_texts.includes(prev_string)) {
-            // TODO: Scrobble
+            let song = await chrome.storage.local.get(["song_string", "song_artist", "song_track", "song_start", "song_scrobbled"]);
+            // console.log(song);
+            if(prev_string == song.song_string && !song.song_scrobbled){
+                let result = await lastfm_scrobble(song.song_artist, song.song_track, song.song_start);
+            }
 
-            await chrome.storage.local.remove(["song_name", "song_start", "song_scrobbled"]);
+            await chrome.storage.local.remove(["song_string", "song_artist", "song_track", "song_start", "song_scrobbled"]);
         }
 
         // Check if our current text is non default, if so, save song details
         if(!default_texts.includes(cur_string)){
+            let date = new Date();
             let tmp = cur_string.split(" - ");
-            let search = lastfm_search_song(tmp[0], tmp[1]);
-            console.log(search);
-
-            // TODO: Search for song on Last FM to retrieve correct/modified info
-            await chrome.storage.local.set({
-                song_name: cur_string,
-                song_start: new Date(),
-                song_scrobbled: false
-            });
+            let search = await lastfm_search_song(tmp[0], tmp[1]);
+            if(search == undefined){
+                await chrome.storage.local.set({
+                    song_string: cur_string,
+                    song_artist: tmp[0],
+                    song_track: tmp[1],
+                    song_start: Math.round(date.getTime()/1000),
+                    song_scrobbled: false
+                });
+            }
+            else{
+                await chrome.storage.local.set({
+                    song_string: cur_string,
+                    song_artist: search.artist,
+                    song_track: search.name,
+                    song_start: Math.round(date.getTime()/1000),
+                    song_scrobbled: false
+                });
+            }
         }
     }
 
     // If the current text is non default we should set now playing on Last FM
     if(!default_texts.includes(cur_string)){
-        let tmp = cur_string.split(" - ");
-        await lastfm_set_now_playing(tmp[0], tmp[1]);
+        let data = await chrome.storage.local.get(["song_artist", "song_track"]);
+        await lastfm_set_now_playing(data.song_artist, data.song_track);
     }
 
     // Save our current string for the next iteration
@@ -106,7 +153,12 @@ async function handle_scraper(request, sender, sendResponse) {
 }
 
 
-// Last FM calls
+// LastFM calls
+/**
+ * Sets the 'Now Scrobbling' status of the LastFM user to the provided song
+ * @param artist The name of the artist being played
+ * @param track The name of the song being played
+ */
 async function lastfm_set_now_playing(artist, track) {
     let settings = await load_settings();
     let data = {
@@ -124,10 +176,16 @@ async function lastfm_set_now_playing(artist, track) {
         console.log("lastfm_set_now_playing error", data);
     }
     else{
-        console.log("LastFM: set 'now playing' to '" + artist + " - " + track + "'");
+        console.log("LastFM: set now Scrobbling '" + artist + " - " + track + "'");
     }
 }
 
+/**
+ * Searches for the provided song on LastFM, and return the most relevant result
+ * @param artist The name of the artist
+ * @param track The name of the song
+ * @returns object A song object which best correspondents the search parameters
+ */
 async function lastfm_search_song(artist, track){
     let settings = await load_settings();
     let data = {
@@ -139,10 +197,34 @@ async function lastfm_search_song(artist, track){
         format: 'json'
     };
     let result = await get(lastfm_base_url, data);
-    console.log(result);
-    return result;
+    return result.results.trackmatches.track[0];
 }
 
+/**
+ * Scrobble the provided song on LastFM
+ * @param artist The name of the artist of the song being scrobbled
+ * @param track The name of the song being scrobbled
+ * @param timestamp The UTC UNIX timestamp at which the song started playing
+ */
+async function lastfm_scrobble(artist, track, timestamp){
+    let settings = await load_settings();
+    let data = {
+        method: "track.scrobble",
+        artist: artist,
+        track: track,
+        chosenByUser: '0',
+        timestamp: timestamp,
+        api_key: settings.API_KEY,
+        sk: settings.session_key,
+        format: 'json'
+    }
+    let sig = await lastfm_signature(data, settings.API_SECRET);
+    data['api_sig'] = sig;
+    // console.log(data);
+    let result = await post(lastfm_base_url, data);
+    // console.log(result);
+    console.log("LastFM: scrobbled '" + artist + " - " + track + "'");
+}
 
 
 /**
@@ -153,28 +235,26 @@ async function lastfm_search_song(artist, track){
 
 // Global settings
 // Kink
-let stream_urls = ["https://kink.nl/player?stream=stream.kink"];
-let default_texts = ["KINK - No alternative"]
+const stream_urls = ["https://kink.nl/player?stream=stream.kink"];
+const default_texts = ["KINK - No alternative", undefined]
 
 // Last.FM API
-let lastfm_base_url = "https://ws.audioscrobbler.com/2.0/";
+const lastfm_base_url = "https://ws.audioscrobbler.com/2.0/";
 
 async function load_settings(){
     let config = await fetch("config.json").then( (response) => { return response.json(); });
     let session_key = await chrome.storage.local.get("session_key");
-    // await Promise.all([config, session_key]);
-    if(session_key.session_key){
-        config = {
-            ...config,
-            session_key: session_key.session_key
-        }
-    }
+
+    await Promise.all([config, session_key]);
+
+    if(session_key.session_key)
+        config['session_key'] = session_key.session_key;
     return config;
 }
 
 async function get(url, data) {
     url = url + "?" + new URLSearchParams(data).toString();
-    console.log("get", url)
+    // console.log("get", url);
     return fetch(url).then( (response) => { return response.json() });
 }
 
@@ -200,6 +280,7 @@ async function lastfm_signature(params, secret){
             continue;
         result += k + params[k];
     }
+    // console.log("lastfm signature ", result + secret, MD5(result + secret));
     return MD5(result + secret);
 }
 

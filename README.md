@@ -3,8 +3,8 @@ This extension will scrobble the songs played on the official [Kink stream](http
 This is a WIP project, so not all functionality is up yet.
 
 ## Current status
-Currently the extension allows the user to create the required API keys by using the extension options menu.
-Once the keys have been generated the extension can set the "Now playing" status on Last FM once the Kink FM stream is started.
+The extension currently works (once the keys have been generated), however, it does not have error handling of any kind.
+So it probably only keeps working as long as nothing unexpected happens
 
 ## Functionality
 This extension will detect when the user is listening to the Kink stream, and extract the songs being played.

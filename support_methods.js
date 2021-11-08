@@ -1,33 +1,28 @@
+// Global settings
 // Kink
-let stream_urls = ["https://kink.nl/player?stream=stream.kink"];
-let default_texts = ["KINK - No alternative"]
+const stream_urls = ["https://kink.nl/player?stream=stream.kink"];
+const default_texts = ["KINK - No alternative", undefined]
 
 // Last.FM API
-let lastfm_base_url = "https://ws.audioscrobbler.com/2.0/";
+const lastfm_base_url = "https://ws.audioscrobbler.com/2.0/";
 
 async function load_settings(){
     let config = await fetch("config.json").then( (response) => { return response.json(); });
     let session_key = await chrome.storage.local.get("session_key");
-    // await Promise.all([config, session_key]);
-    if(session_key.session_key){
-        config = {
-            ...config,
-            session_key: session_key.session_key
-        }
-    }
+
+    await Promise.all([config, session_key]);
+
+    if(session_key.session_key)
+        config['session_key'] = session_key.session_key;
     return config;
 }
 
 async function get(url, data) {
     url = url + "?" + new URLSearchParams(data).toString();
-    console.log("get", url)
+    // console.log("get", url);
     return fetch(url).then( (response) => { return response.json() });
 }
 
-/**
- * Performs a post request to the provided URL, parses the response as JSON.
- * TODO: Last FM returns XML when an error occurs, so there should be a check for error 400, which then parses as XMl.
- */
 async function post(url, data) {
     let options = {
         method: "POST",
@@ -50,6 +45,7 @@ async function lastfm_signature(params, secret){
             continue;
         result += k + params[k];
     }
+    // console.log("lastfm signature ", result + secret, MD5(result + secret));
     return MD5(result + secret);
 }
 
