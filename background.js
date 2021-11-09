@@ -26,7 +26,6 @@ chrome.tabs.onUpdated.addListener( async (id, update, tab) => {
             await chrome.storage.local.set({"windowId": tab.id});
 
             // Set the acraper to run on 1 minute intervals, and run it directly
-            chrome.alarms.onAlarm.addListener(start_scraper);
             chrome.alarms.create("KinkScrobbler", {periodInMinutes: 1});
             await start_scraper();
         }
@@ -54,9 +53,8 @@ chrome.action.onClicked.addListener((curTab) => {
 async function reset(){
     console.log("Resetting alarms and storage");
     let alarm = chrome.alarms.clear("KinkScrobbler");
-    let alarmListener = chrome.alarms.onAlarm.removeListener(start_scraper);
     let storage = chrome.storage.local.remove(["windowId", "prev_scraped_string", "song_string", "song_artist", "song_track", "song_start", "song_scrobbled"]);
-    await Promise.all([alarm, alarmListener, storage]);
+    await Promise.all([alarm, storage]);
 }
 
 /**
@@ -64,6 +62,7 @@ async function reset(){
  * Injects the content_script on the tab which plays the stream to scrape the current song
  * @param alarm (optional) Set if the method is called by an alarm. The alarm identifier is alarm.name
  */
+chrome.alarms.onAlarm.addListener(start_scraper);
 async function start_scraper(alarm) {
     if(alarm && alarm.name != "KinkScrobbler") {
         console.log("Wrong alarm");
