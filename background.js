@@ -138,14 +138,14 @@ async function handle_scraper(request, sender, sendResponse) {
                     song_scrobbled: false
                 });
             }
+
+            // Update Now Playing on LastFM
+            let data = await chrome.storage.local.get(["song_artist", "song_track"]);
+            await lastfm_set_now_playing(data.song_artist, data.song_track)
         }
     }
 
-    // If the current text is non default we should set now playing on Last FM
-    if(!default_texts.includes(cur_string)){
-        let data = await chrome.storage.local.get(["song_artist", "song_track"]);
-        await lastfm_set_now_playing(data.song_artist, data.song_track);
-    }
+
 
     // Save our current string for the next iteration
     await chrome.storage.local.set({prev_scraped_string: cur_string});
@@ -234,7 +234,7 @@ async function lastfm_scrobble(artist, track, timestamp){
 
 // Global settings
 // Kink
-const stream_urls = ["https://kink.nl/player?stream=stream.kink", "https://kink.nl/player/stream.kink"];
+const stream_urls = ["https://kink.nl/player/stream.kink", "https://kink.nl/player?stream=stream.kink"];
 const default_texts = ["KINK - No alternative", undefined]
 
 // Last.FM API

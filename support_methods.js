@@ -1,6 +1,6 @@
 // Global settings
 // Kink
-const stream_urls = ["https://kink.nl/player?stream=stream.kink", "https://kink.nl/player/stream.kink"];
+const stream_urls = ["https://kink.nl/player/stream.kink", "https://kink.nl/player?stream=stream.kink"];
 const default_texts = ["KINK - No alternative", undefined]
 
 // Last.FM API
