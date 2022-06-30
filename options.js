@@ -1,6 +1,7 @@
 create_page().then(r => { });
 
 async function create_page(){
+    // TODO Add check for non existent config file.
     let settings = await load_settings();
     let generate_key_url = "http://www.last.fm/api/auth/?api_key=" + settings.API_KEY;
     $("div#add_keys a#generate_keys").click(async (e) => {

@@ -89,7 +89,7 @@ async function start_scraper(alarm) {
  */
 async function handle_scraper(request, sender, sendResponse) {
     // Check if this is a message from the scraper
-    if(sender.url != "https://kink.nl/player?stream=stream.kink") {
+    if(sender.url != "https://kink.nl/player?stream=stream.kink" && sender.url != "https://kink.nl/player/stream.kink") {
         console.log("handle_scraper: wrong sender");
         console.log(sender);
         return
@@ -234,13 +234,14 @@ async function lastfm_scrobble(artist, track, timestamp){
 
 // Global settings
 // Kink
-const stream_urls = ["https://kink.nl/player?stream=stream.kink"];
+const stream_urls = ["https://kink.nl/player?stream=stream.kink", "https://kink.nl/player/stream.kink"];
 const default_texts = ["KINK - No alternative", undefined]
 
 // Last.FM API
 const lastfm_base_url = "https://ws.audioscrobbler.com/2.0/";
 
 async function load_settings(){
+    // TODO Add check for non existent config file.
     let config = await fetch("config.json").then( (response) => { return response.json(); });
     let session_key = await chrome.storage.local.get("session_key");
 
